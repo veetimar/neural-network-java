@@ -1,9 +1,8 @@
 package monika;
 import java.util.*;
-// TODO: genetic algorithm?, Constructor that only takes a file?, class hierarchy?
+
 public class Network {
     private final Layer[] layers;
-    private final float learningRate = 0.01f;
 
     public Network(int... size) {
         if (size.length < 2) {
@@ -21,9 +20,23 @@ public class Network {
         System.gc();
     }
 
+    public float[][] train(float[][][] data, int times, float learningRate) {
+        shuffle(data);
+        float[][] errors = new float[times][data.length];
+        for (int i = 0; i < times; i++) {
+            for (int j = 0; j < data.length; j++) {
+                if (data[j].length != 2) {
+                    throw new IllegalArgumentException("Illegal structure in training data!");
+                }
+                errors[i][j] = backward(data[j][0], data[j][1], learningRate);
+            }
+        }
+        return errors;
+    }
+
     public float[] forward(float[] inputs) {
         if (inputs.length != layers[0].length()) {
-            throw new IllegalArgumentException("The size of the inputs array does not match the size of the input layer!");
+            throw new IllegalArgumentException("Illegal size for the inputs array!");
         }
         for (int i = 0; i < inputs.length; i++) {
             layers[0].neuron(i).setActivation(inputs[i]);
@@ -46,30 +59,17 @@ public class Network {
                     value = sigmoid(value);
                     cn.setActivation(value);
                     outputs[j] = value;
-                } 
+                }
             }
         }
         return outputs;
     }
- 
-    public float[][] train(float[][] inputs, float[][] outputs, int times) {
-        if (inputs.length != outputs.length) {
-            throw new IllegalArgumentException("Different number of input and output examples!");
-        }
-        float[][] errors = new float[times][inputs.length];
-        for (int i = 0; i < times; i++) {
-            for (int j = 0; j < inputs.length; j++) {
-                errors[i][j] = backward(inputs[j], outputs[j]);
-            }
-        }
-        return errors;
-    }
 
-    public float backward(float[] inputs, float[] expectedOutputs) {
+    public float backward(float[] inputs, float[] expectedOutputs, float learningRate) {
         if (inputs.length != layers[0].length()) {
-            throw new IllegalArgumentException("The size of the inputs array does not match the size of the input layer!");
+            throw new IllegalArgumentException("Illegal size for the inputs array!");
         } else if (expectedOutputs.length != layers[layers.length - 1].length()) {
-            throw new IllegalArgumentException("The size of the expected outputs array does not match the size of the output layer!");
+            throw new IllegalArgumentException("Illegal size for the expected outputs array!");
         }
         float[] outputs = forward(inputs);
         float error = meanSquaredError(outputs, expectedOutputs);
@@ -81,17 +81,17 @@ public class Network {
             boolean output = i == layers.length - 1;
             for (int j = 0; j < layers[i].length(); j++) {
                 Neuron cn = layers[i].neuron(j);
-                float gradientd;
+                float gradient;
                 if (!output) {
-                    gradientd = cn.getGradient() * eluD(cn.getValue());
+                    gradient = cn.getGradient() * eluD(cn.getValue());
                 } else {
-                    gradientd = cn.getGradient() * sigmoidD(cn.getValue());
+                    gradient = cn.getGradient() * sigmoidD(cn.getValue());
                 }
-                cn.setBias(cn.getBias() - learningRate * gradientd);
+                cn.setBias(cn.getBias() - learningRate * gradient);
                 for (int k = 0; k < layers[i - 1].length(); k++) {
-                    cn.setWeight(k, cn.getWeight(k) - learningRate * layers[i - 1].neuron(k).getActivation() * gradientd);
+                    cn.setWeight(k, cn.getWeight(k) - learningRate * layers[i - 1].neuron(k).getActivation() * gradient);
                     if (i > 1) {
-                        layers[i - 1].neuron(k).setGradient(layers[i - 1].neuron(k).getGradient() + cn.getWeight(k) * gradientd);
+                        layers[i - 1].neuron(k).setGradient(layers[i - 1].neuron(k).getGradient() + cn.getWeight(k) * gradient);
                     }
                 }
             }
@@ -101,17 +101,24 @@ public class Network {
     }
 
     private float meanSquaredError(float[] outputs, float[] expectedOutputs) {
+        return squaredError(outputs, expectedOutputs) / outputs.length;
+    }
+
+    private float squaredError(float[] outputs, float[] expectedOutputs) {
         if (outputs.length != expectedOutputs.length) {
-            throw new IllegalArgumentException("The Outputs and expected outputs arrays are not the same size!");
+            throw new IllegalArgumentException("The outputs and expected outputs arrays are not the same size!");
         }
-        float x = 0;
+        float error = 0;
         for (int i = 0; i < outputs.length; i++) {
-            x += Math.pow(outputs[i] - expectedOutputs[i], 2);
+            error += Math.pow(outputs[i] - expectedOutputs[i], 2);
         }
-        return x / outputs.length;
+        return error;
     }
 
     private float[] squaredErrorPD(float[] outputs, float[] expectedOutputs) {
+        if (outputs.length != expectedOutputs.length) {
+            throw new IllegalArgumentException("The outputs and expected outputs arrays are not the same size!");
+        }
         float[] derivatives = new float[outputs.length];
         for (int i = 0; i < derivatives.length; i++) {
             derivatives[i] = 2 * (outputs[i] - expectedOutputs[i]);
@@ -119,10 +126,15 @@ public class Network {
         return derivatives;
     }
 
+    private void shuffle(float[][][] array) {
+        List<float[][]> list = Arrays.asList(array);
+        Collections.shuffle(list);
+    }
+
     private float sigmoid(float x) {
         return (float)(1 / (1 + Math.exp(-x)));
     }
-    
+
     private float sigmoidD(float x) {
         return (float)(Math.exp(x) / Math.pow(1 + Math.exp(x), 2));
     }
@@ -186,7 +198,7 @@ class Layer {
         if (size < 1) {
             throw new IllegalArgumentException("Cannot create a layer smaller than 1 neuron!");
         } else if (previousSize < 1) {
-            throw new IllegalArgumentException("Illegal parameter for the size of the previous layer!");
+            throw new IllegalArgumentException("Illegal size for the previous layer!");
         }
         this.neurons = new Neuron[size];
         if (!output) {
@@ -276,6 +288,8 @@ class Neuron {
             weights[i] = cacheWeights[i];
         }
         gradient = 0;
+        cacheBias = 0;
+        Arrays.fill(cacheWeights, 0);
     }
 
     public void setValue(float value) {
