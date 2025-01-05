@@ -20,16 +20,28 @@ public class Network {
         System.gc();
     }
 
-    public float[][] train(float[][][] data, int times, float learningRate) {
-        shuffle(data);
-        float[][] errors = new float[times][data.length];
-        for (int i = 0; i < times; i++) {
+    public float[][] train(float[][][] data, int epochs, int batchSize, float learningRate) {
+        if (batchSize == -1) {
+            batchSize = data.length;
+        }
+        if (batchSize > data.length || batchSize < 1) {
+            throw new IllegalArgumentException("Illegal batch size!");
+        }
+        if (batchSize != data.length) {
+            shuffle(data);
+        }
+        float[][] errors = new float[epochs][data.length];
+        for (int i = 0; i < epochs; i++) {
             for (int j = 0; j < data.length; j++) {
+                if (j % batchSize == 0 && j > 0) {
+                    update(learningRate, batchSize);
+                }
                 if (data[j].length != 2) {
                     throw new IllegalArgumentException("Illegal structure in training data!");
                 }
-                errors[i][j] = backward(data[j][0], data[j][1], learningRate);
+                errors[i][j] = backward(data[j][0], data[j][1]);
             }
+            update(learningRate, batchSize);
         }
         return errors;
     }
@@ -65,39 +77,41 @@ public class Network {
         return outputs;
     }
 
-    public float backward(float[] inputs, float[] expectedOutputs, float learningRate) {
+    public float backward(float[] inputs, float[] expectedOutputs) {
         if (inputs.length != layers[0].length()) {
             throw new IllegalArgumentException("Illegal size for the inputs array!");
         } else if (expectedOutputs.length != layers[layers.length - 1].length()) {
             throw new IllegalArgumentException("Illegal size for the expected outputs array!");
         }
+        resetGradients();
         float[] outputs = forward(inputs);
-        float error = meanSquaredError(outputs, expectedOutputs);
         float[] errorpd = squaredErrorPD(outputs, expectedOutputs);
         for (int i = 0; i < layers[layers.length - 1].length(); i++) {
-            layers[layers.length - 1].neuron(i).setGradient(errorpd[i]);
+            Neuron n = layers[layers.length - 1].neuron(i);
+            n.setGradient(sigmoidD(n.getValue()) * errorpd[i]);
         }
         for (int i = layers.length - 1; i > 0; i-- ) {
-            boolean output = i == layers.length - 1;
             for (int j = 0; j < layers[i].length(); j++) {
                 Neuron cn = layers[i].neuron(j);
-                float gradient;
-                if (!output) {
-                    gradient = cn.getGradient() * eluD(cn.getValue());
-                } else {
-                    gradient = cn.getGradient() * sigmoidD(cn.getValue());
-                }
-                cn.setBias(cn.getBias() - learningRate * gradient);
+                cn.addBias(cn.getGradient());
                 for (int k = 0; k < layers[i - 1].length(); k++) {
-                    cn.setWeight(k, cn.getWeight(k) - learningRate * layers[i - 1].neuron(k).getActivation() * gradient);
+                    Neuron pn = layers[i - 1].neuron(k);
+                    cn.addWeight(k, pn.getActivation() * cn.getGradient());
                     if (i > 1) {
-                        layers[i - 1].neuron(k).setGradient(layers[i - 1].neuron(k).getGradient() + cn.getWeight(k) * gradient);
+                        pn.setGradient(pn.getGradient() + eluD(pn.getValue()) * cn.getWeight(k) * cn.getGradient());
                     }
                 }
             }
         }
-        update();
-        return error;
+        return meanSquaredError(outputs, expectedOutputs);
+    }
+
+    private void resetGradients() {
+        for (int i = 1; i < layers.length - 1; i++) {
+            for (int j = 0; j < layers[i].length(); j++) {
+                layers[i].neuron(j).setGradient(0);
+            }
+        }
     }
 
     private float meanSquaredError(float[] outputs, float[] expectedOutputs) {
@@ -155,9 +169,9 @@ public class Network {
         }
     }
 
-    public void update() {
+    public void update(float learningRate, int batchSize) {
         for (int i = 1; i < layers.length; i++) {
-            layers[i].update();
+            layers[i].update(learningRate, batchSize);
         }
     }
 
@@ -233,9 +247,9 @@ class Layer {
         return weights;
     }
 
-    public void update() {
+    public void update(float learningRate, int batchSize) {
         for (int i = 0; i < neurons.length; i++) {
-            neurons[i].update();
+            neurons[i].update(learningRate, batchSize);
         }
     }
 
@@ -263,14 +277,14 @@ class Neuron {
     private float value;
     private float activation;
     private float bias;
-    private float cacheBias;
+    private float deltaBias;
     private final float[] weights;
-    private final float[] cacheWeights;
+    private final float[] deltaWeights;
     private float gradient;
 
     public Neuron() {
         this.weights = null;
-        this.cacheWeights = null;
+        this.deltaWeights = null;
     }
 
     public Neuron(float[] weights, float bias) {
@@ -279,17 +293,18 @@ class Neuron {
         for (int i = 0; i < this.weights.length; i++) {
             this.weights[i] = weights[i];
         }
-        this.cacheWeights = new float[this.weights.length];
+        this.deltaWeights = new float[this.weights.length];
     }
 
-    public void update() {
-        bias = cacheBias;
+    public void update(float learningRate, int batchSize) {
+        learningRate /= batchSize;
+        bias = bias - learningRate * deltaBias;
+        deltaBias = 0;
         for (int i = 0; i < weights.length; i++) {
-            weights[i] = cacheWeights[i];
+            weights[i] = weights[i] - learningRate * deltaWeights[i];
         }
+        Arrays.fill(deltaWeights, 0);
         gradient = 0;
-        cacheBias = 0;
-        Arrays.fill(cacheWeights, 0);
     }
 
     public void setValue(float value) {
@@ -300,12 +315,12 @@ class Neuron {
         this.activation = activation;
     }
 
-    public void setBias(float bias) {
-        cacheBias = bias;
+    public void addBias(float bias) {
+        deltaBias += bias;
     }
 
-    public void setWeight(int index, float weight) {
-        cacheWeights[index] = weight;
+    public void addWeight(int index, float weight) {
+        deltaWeights[index] += weight;
     }
 
     public void setGradient(float gradient) {
