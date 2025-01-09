@@ -4,9 +4,10 @@ import java.util.*;
 public class Network {
     private final Layer[] layers;
 
+    // Constructor for the whole neural network
     public Network(int... size) {
         if (size.length < 2) {
-            throw new IllegalArgumentException("Cannot create a neural network smaller than 2 layers!");
+            throw new IllegalArgumentException("Cannot create a network smaller than 2 layers!");
         }
         this.layers = new Layer[size.length];
         this.layers[0] = new Layer(size[0]);
@@ -20,7 +21,8 @@ public class Network {
         System.gc();
     }
 
-    public float[][] train(float[][][] data, int epochs, int batchSize, float learningRate) {
+    // Train the network using gradient descent (batch size -1 -> max batch size)
+    public float[] train(float[][][] data, int epochs, int batchSize, float learningRate) {
         if (batchSize == -1) {
             batchSize = data.length;
         }
@@ -30,8 +32,9 @@ public class Network {
         if (batchSize != data.length) {
             shuffle(data);
         }
-        float[][] errors = new float[epochs][data.length];
+        float[] errors = new float[epochs];
         for (int i = 0; i < epochs; i++) {
+            float error = 0;
             for (int j = 0; j < data.length; j++) {
                 if (j % batchSize == 0 && j > 0) {
                     update(learningRate, batchSize);
@@ -39,28 +42,30 @@ public class Network {
                 if (data[j].length != 2) {
                     throw new IllegalArgumentException("Illegal structure in training data!");
                 }
-                errors[i][j] = backward(data[j][0], data[j][1]);
+                error += backward(data[j][0], data[j][1]);
             }
             update(learningRate, batchSize);
+            errors[i] = error / data.length;
         }
         return errors;
     }
 
-    public float[] forward(float[] inputs) {
-        if (inputs.length != layers[0].length()) {
+    // Forward inputs through the network and return outputs
+    public float[] forward(float... inputs) {
+        if (inputs.length != this.layers[0].length()) {
             throw new IllegalArgumentException("Illegal size for the inputs array!");
         }
         for (int i = 0; i < inputs.length; i++) {
-            layers[0].neuron(i).setActivation(inputs[i]);
+            this.layers[0].neuron(i).setActivation(inputs[i]);
         }
-        float[] outputs = new float[layers[layers.length - 1].length()];
-        for (int i = 1; i < layers.length; i++) {
-            boolean output = i == layers.length - 1;
-            for (int j = 0; j < layers[i].length(); j++) {
-                Neuron cn = layers[i].neuron(j);
+        float[] outputs = new float[this.layers[this.layers.length - 1].length()];
+        for (int i = 1; i < this.layers.length; i++) {
+            boolean output = i == this.layers.length - 1;
+            for (int j = 0; j < this.layers[i].length(); j++) {
+                Neuron cn = this.layers[i].neuron(j);
                 float value = 0;
-                for (int k = 0; k < layers[i - 1].length(); k++) {
-                    value += layers[i - 1].neuron(k).getActivation() * cn.getWeight(k);
+                for (int k = 0; k < this.layers[i - 1].length(); k++) {
+                    value += this.layers[i - 1].neuron(k).getActivation() * cn.getWeight(k);
                 }
                 value += cn.getBias();
                 cn.setValue(value);
@@ -77,28 +82,29 @@ public class Network {
         return outputs;
     }
 
-    public float backward(float[] inputs, float[] expectedOutputs) {
-        if (inputs.length != layers[0].length()) {
+    // Calculate and cache new weights and biases
+    private float backward(float[] inputs, float[] expectedOutputs) {
+        if (inputs.length != this.layers[0].length()) {
             throw new IllegalArgumentException("Illegal size for the inputs array!");
-        } else if (expectedOutputs.length != layers[layers.length - 1].length()) {
+        } else if (expectedOutputs.length != this.layers[this.layers.length - 1].length()) {
             throw new IllegalArgumentException("Illegal size for the expected outputs array!");
         }
         resetGradients();
         float[] outputs = forward(inputs);
-        float[] errorpd = squaredErrorPD(outputs, expectedOutputs);
-        for (int i = 0; i < layers[layers.length - 1].length(); i++) {
-            Neuron n = layers[layers.length - 1].neuron(i);
-            n.setGradient(sigmoidD(n.getValue()) * errorpd[i]);
+        float[] derivatives = squaredErrorDerivatives(outputs, expectedOutputs);
+        for (int i = 0; i < this.layers[this.layers.length - 1].length(); i++) {
+            Neuron n = this.layers[this.layers.length - 1].neuron(i);
+            n.setGradient(sigmoidDerivative(n.getValue()) * derivatives[i]);
         }
-        for (int i = layers.length - 1; i > 0; i-- ) {
-            for (int j = 0; j < layers[i].length(); j++) {
-                Neuron cn = layers[i].neuron(j);
+        for (int i = this.layers.length - 1; i > 0; i--) {
+            for (int j = 0; j < this.layers[i].length(); j++) {
+                Neuron cn = this.layers[i].neuron(j);
                 cn.addBias(cn.getGradient());
-                for (int k = 0; k < layers[i - 1].length(); k++) {
-                    Neuron pn = layers[i - 1].neuron(k);
+                for (int k = 0; k < this.layers[i - 1].length(); k++) {
+                    Neuron pn = this.layers[i - 1].neuron(k);
                     cn.addWeight(k, pn.getActivation() * cn.getGradient());
                     if (i > 1) {
-                        pn.setGradient(pn.getGradient() + eluD(pn.getValue()) * cn.getWeight(k) * cn.getGradient());
+                        pn.setGradient(pn.getGradient() + eluDerivative(pn.getValue()) * cn.getWeight(k) * cn.getGradient());
                     }
                 }
             }
@@ -107,9 +113,9 @@ public class Network {
     }
 
     private void resetGradients() {
-        for (int i = 1; i < layers.length - 1; i++) {
-            for (int j = 0; j < layers[i].length(); j++) {
-                layers[i].neuron(j).setGradient(0);
+        for (int i = 1; i < this.layers.length - 1; i++) {
+            for (int j = 0; j < this.layers[i].length(); j++) {
+                this.layers[i].neuron(j).setGradient(0);
             }
         }
     }
@@ -120,7 +126,7 @@ public class Network {
 
     private float squaredError(float[] outputs, float[] expectedOutputs) {
         if (outputs.length != expectedOutputs.length) {
-            throw new IllegalArgumentException("The outputs and expected outputs arrays are not the same size!");
+            throw new IllegalArgumentException("The outputs and expected outputs arrays differ in length!");
         }
         float error = 0;
         for (int i = 0; i < outputs.length; i++) {
@@ -129,9 +135,9 @@ public class Network {
         return error;
     }
 
-    private float[] squaredErrorPD(float[] outputs, float[] expectedOutputs) {
+    private float[] squaredErrorDerivatives(float[] outputs, float[] expectedOutputs) {
         if (outputs.length != expectedOutputs.length) {
-            throw new IllegalArgumentException("The outputs and expected outputs arrays are not the same size!");
+            throw new IllegalArgumentException("The outputs and expected outputs arrays differ in length!");
         }
         float[] derivatives = new float[outputs.length];
         for (int i = 0; i < derivatives.length; i++) {
@@ -149,7 +155,7 @@ public class Network {
         return (float)(1 / (1 + Math.exp(-x)));
     }
 
-    private float sigmoidD(float x) {
+    private float sigmoidDerivative(float x) {
         return (float)(Math.exp(x) / Math.pow(1 + Math.exp(x), 2));
     }
 
@@ -161,7 +167,7 @@ public class Network {
         }
     }
 
-    private float eluD(float x) {
+    private float eluDerivative(float x) {
         if (x >= 0) {
             return 1;
         } else {
@@ -169,25 +175,25 @@ public class Network {
         }
     }
 
-    public void update(float learningRate, int batchSize) {
-        for (int i = 1; i < layers.length; i++) {
-            layers[i].update(learningRate, batchSize);
+    private void update(float learningRate, int batchSize) {
+        for (int i = 1; i < this.layers.length; i++) {
+            this.layers[i].update(learningRate, batchSize);
         }
     }
 
     public Layer layer(int index) {
-        return layers[index];
+        return this.layers[index];
     }
 
     public int length() {
-        return layers.length;
+        return this.layers.length;
     }
 
     public String toString() {
         String s = new String();
-        for (int i = 0; i < layers.length; i++) {
-            s += layers[i];
-            if (i < layers.length - 1) {
+        for (int i = 0; i < this.layers.length; i++) {
+            s += this.layers[i];
+            if (i < this.layers.length - 1) {
                 s += "\n";
             }
         }
@@ -198,6 +204,7 @@ public class Network {
 class Layer {
     private final Neuron[] neurons;
 
+    // Constructor for input layer
     public Layer(int size) {
         if (size < 1) {
             throw new IllegalArgumentException("Cannot create a layer smaller than 1 neuron!");
@@ -208,6 +215,7 @@ class Layer {
         }
     }
 
+    // Constructor for other layers
     public Layer(int size, int previousSize, boolean output) {
         if (size < 1) {
             throw new IllegalArgumentException("Cannot create a layer smaller than 1 neuron!");
@@ -226,6 +234,7 @@ class Layer {
         }
     }
 
+    // Elu weight initialization
     private float[] he(int size) {
         float[] weights = new float[size];
         Random r = new Random();
@@ -236,6 +245,7 @@ class Layer {
         return weights;
     }
 
+    // Sigmoid weight initialization
     private float[] xavier(int size) {
         float[] weights = new float[size];
         Random r = new Random();
@@ -248,24 +258,24 @@ class Layer {
     }
 
     public void update(float learningRate, int batchSize) {
-        for (int i = 0; i < neurons.length; i++) {
-            neurons[i].update(learningRate, batchSize);
+        for (int i = 0; i < this.neurons.length; i++) {
+            this.neurons[i].update(learningRate, batchSize);
         }
     }
 
     public Neuron neuron(int index) {
-        return neurons[index];
+        return this.neurons[index];
     }
 
     public int length() {
-        return neurons.length;
+        return this.neurons.length;
     }
 
     public String toString() {
         String s = new String();
-        for (int i = 0; i < neurons.length; i++) {
-            s += neurons[i];
-            if (i < neurons.length - 1) {
+        for (int i = 0; i < this.neurons.length; i++) {
+            s += this.neurons[i];
+            if (i < this.neurons.length - 1) {
                 s += " ";
             }
         }
@@ -282,11 +292,13 @@ class Neuron {
     private final float[] deltaWeights;
     private float gradient;
 
+    // Constructor for input neuron
     public Neuron() {
         this.weights = null;
         this.deltaWeights = null;
     }
 
+    // Constructor for other neurons
     public Neuron(float[] weights, float bias) {
         this.bias = bias;
         this.weights = new float[weights.length];
@@ -298,13 +310,13 @@ class Neuron {
 
     public void update(float learningRate, int batchSize) {
         learningRate /= batchSize;
-        bias = bias - learningRate * deltaBias;
-        deltaBias = 0;
-        for (int i = 0; i < weights.length; i++) {
-            weights[i] = weights[i] - learningRate * deltaWeights[i];
+        this.bias -= learningRate * this.deltaBias;
+        this.deltaBias = 0;
+        for (int i = 0; i < this.weights.length; i++) {
+            this.weights[i] -= learningRate * this.deltaWeights[i];
+            this.deltaWeights[i] = 0;
         }
-        Arrays.fill(deltaWeights, 0);
-        gradient = 0;
+        this.gradient = 0;
     }
 
     public void setValue(float value) {
@@ -316,11 +328,11 @@ class Neuron {
     }
 
     public void addBias(float bias) {
-        deltaBias += bias;
+        this.deltaBias += bias;
     }
 
     public void addWeight(int index, float weight) {
-        deltaWeights[index] += weight;
+        this.deltaWeights[index] += weight;
     }
 
     public void setGradient(float gradient) {
@@ -328,26 +340,26 @@ class Neuron {
     }
 
     public float getValue() {
-        return value;
+        return this.value;
     }
 
     public float getActivation() {
-        return activation;
+        return this.activation;
     }
 
     public float getBias() {
-        return bias;
+        return this.bias;
     }
 
     public float getWeight(int index) {
-        return weights[index];
+        return this.weights[index];
     }
 
     public float getGradient() {
-        return gradient;
+        return this.gradient;
     }
 
     public String toString() {
-        return String.valueOf(activation);
+        return String.valueOf(this.activation);
     }
 }
