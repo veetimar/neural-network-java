@@ -22,21 +22,19 @@ public class Run {
     }
 
     public static void test_xor() {
+        test(0, 0); // 0
+        test(0, 1); // 1
+        test(1, 0); // 1
+        test(1, 1); // 0
+    }
+
+    public static void test(float... inputs) {
+        if (inputs.length != 2) {
+            throw new IllegalArgumentException();
+        }
         System.out.println();
-        System.out.println("In: " + "0  0");
-        System.out.printf("Out: %f", network.forward(0, 0)[0]);
-        System.out.println();
-        System.out.println();
-        System.out.println("In: " + "0  1");
-        System.out.printf("Out: %f", network.forward(0, 1)[0]);
-        System.out.println();
-        System.out.println();
-        System.out.println("In: " + "1  0");
-        System.out.printf("Out: %f", network.forward(1, 0)[0]);
-        System.out.println();
-        System.out.println();
-        System.out.println("In: " + "1  1");
-        System.out.printf("Out: %f", network.forward(1, 1)[0]);
+        System.out.println("In: " + (int)inputs[0] + " " + (int)inputs[1]);
+        System.out.printf("Out: %f", network.forward(inputs)[0]);
         System.out.println();
     }
 }
