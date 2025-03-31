@@ -32,19 +32,20 @@ public class Network {
         if (batchSize != data.length) {
             shuffle(data);
         }
+        learningRate /= batchSize;
         float[] errors = new float[epochs];
         for (int i = 0; i < epochs; i++) {
             float error = 0;
             for (int j = 0; j < data.length; j++) {
-                if (j % batchSize == 0 && j > 0) {
-                    update(learningRate, batchSize);
+                if (j > 0 && j % batchSize == 0) {
+                    update(learningRate);
                 }
                 if (data[j].length != 2) {
                     throw new IllegalArgumentException("Illegal structure in training data!");
                 }
                 error += backward(data[j][0], data[j][1]);
             }
-            update(learningRate, batchSize);
+            update(learningRate);
             errors[i] = error / data.length;
         }
         return errors;
@@ -83,7 +84,7 @@ public class Network {
     }
 
     // Calculate and cache new weights and biases
-    private float backward(float[] inputs, float[] expectedOutputs) {
+    public float backward(float[] inputs, float[] expectedOutputs) {
         if (inputs.length != this.layers[0].length()) {
             throw new IllegalArgumentException("Illegal size for the inputs array!");
         } else if (expectedOutputs.length != this.layers[this.layers.length - 1].length()) {
@@ -91,7 +92,7 @@ public class Network {
         }
         resetGradients();
         float[] outputs = forward(inputs);
-        float[] derivatives = squaredErrorDerivatives(outputs, expectedOutputs);
+        float[] derivatives = meanSquaredErrorDerivatives(outputs, expectedOutputs);
         for (int i = 0; i < this.layers[this.layers.length - 1].length(); i++) {
             Neuron n = this.layers[this.layers.length - 1].neuron(i);
             n.setGradient(sigmoidDerivative(n.getValue()) * derivatives[i]);
@@ -135,6 +136,14 @@ public class Network {
         return error;
     }
 
+    private float[] meanSquaredErrorDerivatives(float[] outputs, float[] expectedOutputs) {
+        float[] derivatives = squaredErrorDerivatives(outputs, expectedOutputs);
+        for (int i = 0; i < derivatives.length; i++) {
+            derivatives[i] /= derivatives.length;
+        }
+        return derivatives;
+    }
+
     private float[] squaredErrorDerivatives(float[] outputs, float[] expectedOutputs) {
         if (outputs.length != expectedOutputs.length) {
             throw new IllegalArgumentException("The outputs and expected outputs arrays differ in length!");
@@ -175,9 +184,9 @@ public class Network {
         }
     }
 
-    private void update(float learningRate, int batchSize) {
+    public void update(float learningRate) {
         for (int i = 1; i < this.layers.length; i++) {
-            this.layers[i].update(learningRate, batchSize);
+            this.layers[i].update(learningRate);
         }
     }
 
@@ -192,12 +201,9 @@ public class Network {
     public String toString() {
         String s = new String();
         for (int i = 0; i < this.layers.length; i++) {
-            s += this.layers[i];
-            if (i < this.layers.length - 1) {
-                s += "\n";
-            }
+            s += this.layers[i] + "\n";
         }
-        return s;
+        return s.substring(0, s.length() - 1);
     }
 }
 
@@ -257,9 +263,9 @@ class Layer {
         return weights;
     }
 
-    public void update(float learningRate, int batchSize) {
+    public void update(float learningRate) {
         for (int i = 0; i < this.neurons.length; i++) {
-            this.neurons[i].update(learningRate, batchSize);
+            this.neurons[i].update(learningRate);
         }
     }
 
@@ -274,12 +280,9 @@ class Layer {
     public String toString() {
         String s = new String();
         for (int i = 0; i < this.neurons.length; i++) {
-            s += this.neurons[i];
-            if (i < this.neurons.length - 1) {
-                s += " ";
-            }
+            s += this.neurons[i] + " ";
         }
-        return s;
+        return s.substring(0, s.length() - 1);
     }
 }
 
@@ -292,7 +295,7 @@ class Neuron {
     private final float[] deltaWeights;
     private float gradient;
 
-    // Constructor for input neuron
+    // Constructor for input neurons
     public Neuron() {
         this.weights = null;
         this.deltaWeights = null;
@@ -308,8 +311,7 @@ class Neuron {
         this.deltaWeights = new float[this.weights.length];
     }
 
-    public void update(float learningRate, int batchSize) {
-        learningRate /= batchSize;
+    public void update(float learningRate) {
         this.bias -= learningRate * this.deltaBias;
         this.deltaBias = 0;
         for (int i = 0; i < this.weights.length; i++) {
