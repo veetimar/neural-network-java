@@ -235,16 +235,16 @@ class Layer {
             }
         } else {
             for (int i = 0; i < this.neurons.length; i++) {
-                this.neurons[i] = new Neuron(xavier(previousSize), 0);
+                this.neurons[i] = new Neuron(uniformXavier(previousSize, size), 0);
             }
         }
     }
 
     // Elu weight initialization
-    private float[] he(int size) {
-        float[] weights = new float[size];
+    private float[] he(int previousSize) {
+        float[] weights = new float[previousSize];
         Random r = new Random();
-        float stddev = (float)Math.sqrt(2.0 / size);
+        float stddev = (float)Math.sqrt(2.0 / previousSize);
         for (int i = 0; i < weights.length; i++) {
             weights[i] = (float)r.nextGaussian(0, stddev);
         }
@@ -252,13 +252,12 @@ class Layer {
     }
 
     // Sigmoid weight initialization
-    private float[] xavier(int size) {
-        float[] weights = new float[size];
+    private float[] uniformXavier(int previousSize, int size) {
+        float[] weights = new float[previousSize];
         Random r = new Random();
-        float min = (float)(-1.0 / Math.sqrt(size));
-        float max = (float)(1.0 / Math.sqrt(size));
+        float range = (float)(Math.sqrt(6.0 / (previousSize + size)));
         for (int j = 0; j < weights.length; j++) {
-            weights[j] = r.nextFloat(min, max);
+            weights[j] = r.nextFloat(-range, range);
         }
         return weights;
     }
