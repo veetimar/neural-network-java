@@ -13,9 +13,9 @@ public class Network {
         this.layers[0] = new Layer(size[0]);
         for (int i = 1; i < size.length; i++) {
             if (i < size.length - 1) {
-                this.layers[i] = new Layer(size[i], size[i - 1], false);
+                this.layers[i] = new Layer(size[i - 1], size[i], size[i + 1]);
             } else {
-                this.layers[i] = new Layer(size[i], size[i - 1], true);
+                this.layers[i] = new Layer(size[i - 1], size[i], 0);
             }
         }
         System.gc();
@@ -87,7 +87,8 @@ public class Network {
     public float backward(float[] inputs, float[] expectedOutputs) {
         if (inputs.length != this.layers[0].length()) {
             throw new IllegalArgumentException("Illegal size for the inputs array!");
-        } else if (expectedOutputs.length != this.layers[this.layers.length - 1].length()) {
+        }
+        if (expectedOutputs.length != this.layers[this.layers.length - 1].length()) {
             throw new IllegalArgumentException("Illegal size for the expected outputs array!");
         }
         resetGradients();
@@ -222,29 +223,33 @@ class Layer {
     }
 
     // Constructor for other layers
-    public Layer(int size, int previousSize, boolean output) {
+    public Layer(int previousSize, int size, int nextSize) {
         if (size < 1) {
             throw new IllegalArgumentException("Cannot create a layer smaller than 1 neuron!");
-        } else if (previousSize < 1) {
+        }
+        if (previousSize < 1) {
             throw new IllegalArgumentException("Illegal size for the previous layer!");
         }
+        if (nextSize < 0) {
+            throw new IllegalArgumentException("Illegal size for the next layer!");
+        }
         this.neurons = new Neuron[size];
-        if (!output) {
+        if (nextSize != 0) {
             for (int i = 0; i < this.neurons.length; i++) {
                 this.neurons[i] = new Neuron(he(previousSize), 0);
             }
         } else {
             for (int i = 0; i < this.neurons.length; i++) {
-                this.neurons[i] = new Neuron(xavier(previousSize), 0);
+                this.neurons[i] = new Neuron(glorot(previousSize, nextSize), 0);
             }
         }
     }
 
     // Elu weight initialization
-    private float[] he(int size) {
-        float[] weights = new float[size];
+    private float[] he(int previousSize) {
+        float[] weights = new float[previousSize];
         Random r = new Random();
-        float stddev = (float)Math.sqrt(2.0 / size);
+        float stddev = (float)Math.sqrt(2.0 / previousSize);
         for (int i = 0; i < weights.length; i++) {
             weights[i] = (float)r.nextGaussian(0, stddev);
         }
@@ -252,13 +257,12 @@ class Layer {
     }
 
     // Sigmoid weight initialization
-    private float[] xavier(int size) {
-        float[] weights = new float[size];
+    private float[] glorot(int previousSize, int nextSize) {
+        float[] weights = new float[previousSize];
         Random r = new Random();
-        float min = (float)(-1.0 / Math.sqrt(size));
-        float max = (float)(1.0 / Math.sqrt(size));
+        float range = (float)(Math.sqrt(6.0 / (previousSize + nextSize)));
         for (int j = 0; j < weights.length; j++) {
-            weights[j] = r.nextFloat(min, max);
+            weights[j] = r.nextFloat(-range, range);
         }
         return weights;
     }
