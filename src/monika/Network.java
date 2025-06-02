@@ -23,6 +23,9 @@ public class Network {
 
     // Train the network using gradient descent (batch size -1 -> max batch size)
     public float[] train(float[][][] data, int epochs, int batchSize, float learningRate) {
+        if (epochs < 1) {
+            throw new IllegalArgumentException("Illegal amount of epochs!");
+        }
         if (batchSize == -1) {
             batchSize = data.length;
         }
